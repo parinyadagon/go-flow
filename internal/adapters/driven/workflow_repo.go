@@ -114,3 +114,21 @@ func (r *workflowRepo) UpdateTaskStatus(ctx context.Context, id int, status stri
 
 	return err
 }
+
+func (r *workflowRepo) GetTasksByWorkflowID(ctx context.Context, wfID string) ([]model.Tasks, error) {
+	var dest []model.Tasks
+
+	stmt := table.Tasks.SELECT(
+		table.Tasks.AllColumns,
+	).FROM(
+		table.Tasks,
+	).WHERE(
+		table.Tasks.WorkflowInstanceID.EQ(mysql.String(wfID)),
+	).ORDER_BY(
+		table.Tasks.ID.ASC(),
+	)
+
+	err := stmt.QueryContext(ctx, r.db, &dest)
+
+	return dest, err
+}

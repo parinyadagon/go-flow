@@ -22,7 +22,7 @@ var WorkflowDefinitions = map[string][]string{
 	"OrderProcess": {"ValidateOrder", "DeductMoney", "SendEmail"},
 }
 
-func (s workflowService) StartNewWorkflow(ctx context.Context, req *port.CreateWorkflowRequest) (*model.WorkflowInstances, error) {
+func (s *workflowService) StartNewWorkflow(ctx context.Context, req *port.CreateWorkflowRequest) (*model.WorkflowInstances, error) {
 	newID := uuid.New().String()
 	status := model.WorkflowInstancesStatus_Pending
 
@@ -59,4 +59,11 @@ func (s workflowService) StartNewWorkflow(ctx context.Context, req *port.CreateW
 	}
 
 	return wf, nil
+}
+
+func (s *workflowService) GetWorkflowByID(ctx context.Context, id string) (*model.WorkflowInstances, error) {
+	return s.repo.GetWorkflowByID(ctx, id)
+}
+func (s *workflowService) GetTasksByWorkflowID(ctx context.Context, wfID string) ([]model.Tasks, error) {
+	return s.repo.GetTasksByWorkflowID(ctx, wfID)
 }

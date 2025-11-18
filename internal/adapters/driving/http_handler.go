@@ -30,3 +30,27 @@ func (h *workflowHandler) StartWorkflow(c *fiber.Ctx) error {
 		"data":    result,
 	})
 }
+
+// GET /workflows/:id
+func (h *workflowHandler) GetWorkflowDetail(c *fiber.Ctx) error {
+	id := c.Params("id")
+	ctx := c.Context()
+
+	// 1. ดึงข้อมูล Workflow หลัก
+	wf, err := h.svc.GetWorkflowByID(ctx, id) // (สมมติว่า Service expose Repo หรือ Wrapper)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// 2. ดึง Tasks ลูกๆ ทั้งหมด
+	tasks, err := h.svc.GetTasksByWorkflowID(ctx, id)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// 3. ส่งกลับไปพร้อมกัน
+	return c.JSON(fiber.Map{
+		"workflow": wf,
+		"tasks":    tasks,
+	})
+}

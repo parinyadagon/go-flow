@@ -42,6 +42,7 @@ func main() {
 	app := fiber.New()
 
 	app.Post("/workflows", hdl.StartWorkflow)
+	app.Get("/workflows/:id", hdl.GetWorkflowDetail)
 
 	// 4. Start Server
 	log.Println("🚀 Go-Flow Engine starting on :8080")

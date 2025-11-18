@@ -20,10 +20,13 @@ type WorkflowRepository interface {
 
 	// Task operation
 	CreateTask(ctx context.Context, workflow *model.Tasks) error
+	GetTasksByWorkflowID(ctx context.Context, wfID string) ([]model.Tasks, error)
 	GetTaskPending(ctx context.Context, limit int) ([]model.Tasks, error)
 	UpdateTaskStatus(ctx context.Context, id int, status string) error
 }
 
 type WorkflowService interface {
 	StartNewWorkflow(ctx context.Context, req *CreateWorkflowRequest) (*model.WorkflowInstances, error)
+	GetWorkflowByID(ctx context.Context, id string) (*model.WorkflowInstances, error)
+	GetTasksByWorkflowID(ctx context.Context, wfID string) ([]model.Tasks, error)
 }
