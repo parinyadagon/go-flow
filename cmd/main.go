@@ -3,6 +3,11 @@ package main
 import (
 	"context"
 	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/parinyadagon/go-workflow/config"
@@ -39,13 +44,32 @@ func main() {
 
 	go workerNode.Start(ctx)
 
-	app := echo.New()
+	e := echo.New()
 
-	app.POST("/workflows", hdl.StartWorkflow)
-	app.GET("/workflows/:id", hdl.GetWorkflowDetail)
+	e.POST("/workflows", hdl.StartWorkflow)
+	e.GET("/workflows/:id", hdl.GetWorkflowDetail)
 
 	// 4. Start Server
-	log.Println("🚀 Go-Flow Engine starting on :8080")
-	log.Fatal(app.Start(":8080"))
+	go func() {
+		if err := e.Start(":8080"); err != nil && err != http.ErrServerClosed {
+			e.Logger.Fatal("shutting down the server")
+		}
+
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+	<-quit
+
+	log.Println("Gracefully shutting down...")
+
+	ctxShutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := e.Shutdown(ctxShutdown); err != nil {
+		e.Logger.Fatal(err)
+	}
+
+	log.Println("Server exited")
 
 }
