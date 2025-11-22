@@ -61,6 +61,10 @@ func (s *workflowService) StartNewWorkflow(ctx context.Context, req *port.Create
 	return wf, nil
 }
 
+func (s *workflowService) ListWorkflows(ctx context.Context, limit int, offset int) ([]model.WorkflowInstances, error) {
+	return s.repo.ListWorkflows(ctx, limit, offset)
+}
+
 func (s *workflowService) GetWorkflowByID(ctx context.Context, id string) (*model.WorkflowInstances, error) {
 	return s.repo.GetWorkflowByID(ctx, id)
 }

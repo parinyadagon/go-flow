@@ -61,6 +61,22 @@ func (r *workflowRepo) GetWorkflowPending(ctx context.Context, limit int) ([]mod
 	return dest, err
 }
 
+func (r *workflowRepo) ListWorkflows(ctx context.Context, limit int, offset int) ([]model.WorkflowInstances, error) {
+	var dest []model.WorkflowInstances
+
+	stmt := table.WorkflowInstances.SELECT(
+		table.WorkflowInstances.AllColumns,
+	).FROM(
+		table.WorkflowInstances,
+	).ORDER_BY(
+		table.WorkflowInstances.CreatedAt.DESC(),
+	).LIMIT(int64(limit)).OFFSET(int64(offset))
+
+	err := stmt.QueryContext(ctx, r.db, &dest)
+
+	return dest, err
+}
+
 func (r *workflowRepo) UpdateWorkflowStatus(ctx context.Context, id string, status string) error {
 	stmt := table.WorkflowInstances.UPDATE(
 		table.WorkflowInstances.Status,

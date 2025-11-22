@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	"github.com/parinyadagon/go-workflow/config"
 	"github.com/parinyadagon/go-workflow/db"
 	repository "github.com/parinyadagon/go-workflow/internal/adapters/driven"
@@ -46,6 +47,13 @@ func main() {
 
 	e := echo.New()
 
+	// CORS middleware
+	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowOrigins: []string{"http://localhost:3000"},
+		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
+	}))
+
+	e.GET("/workflows", hdl.ListWorkflows)
 	e.POST("/workflows", hdl.StartWorkflow)
 	e.GET("/workflows/:id", hdl.GetWorkflowDetail)
 

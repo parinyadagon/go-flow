@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/labstack/echo/v4"
 	"github.com/parinyadagon/go-workflow/internal/core/port"
@@ -54,5 +55,35 @@ func (h *workflowHandler) GetWorkflowDetail(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"workflow": wf,
 		"tasks":    tasks,
+	})
+}
+
+// GET /workflows
+func (h *workflowHandler) ListWorkflows(c echo.Context) error {
+	// Parse query parameters with defaults
+	limit := 20
+	offset := 0
+
+	if l := c.QueryParam("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+
+	if o := c.QueryParam("offset"); o != "" {
+		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
+			offset = parsed
+		}
+	}
+
+	workflows, err := h.svc.ListWorkflows(c.Request().Context(), limit, offset)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]interface{}{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"workflows": workflows,
+		"limit":     limit,
+		"offset":    offset,
 	})
 }
