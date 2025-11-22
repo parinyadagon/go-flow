@@ -51,6 +51,7 @@ func Load() (*Config, error) {
 			Host: getEnv("SERVER_HOST", "localhost"),
 			Port: getEnvAsInt("SERVER_PORT", 8080),
 		},
+		Environment: getEnv("ENV", "development"),
 	}
 
 	return config, nil
