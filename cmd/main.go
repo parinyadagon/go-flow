@@ -4,7 +4,7 @@ import (
 	"context"
 	"log"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/labstack/echo/v4"
 	"github.com/parinyadagon/go-workflow/config"
 	"github.com/parinyadagon/go-workflow/db"
 	repository "github.com/parinyadagon/go-workflow/internal/adapters/driven"
@@ -39,13 +39,13 @@ func main() {
 
 	go workerNode.Start(ctx)
 
-	app := fiber.New()
+	app := echo.New()
 
-	app.Post("/workflows", hdl.StartWorkflow)
-	app.Get("/workflows/:id", hdl.GetWorkflowDetail)
+	app.POST("/workflows", hdl.StartWorkflow)
+	app.GET("/workflows/:id", hdl.GetWorkflowDetail)
 
 	// 4. Start Server
 	log.Println("🚀 Go-Flow Engine starting on :8080")
-	log.Fatal(app.Listen(":8080"))
+	log.Fatal(app.Start(":8080"))
 
 }
