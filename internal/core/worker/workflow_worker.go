@@ -59,6 +59,7 @@ func (w *WorkflowWorker) processBatch(ctx context.Context) {
 func (w *WorkflowWorker) executeTask(ctx context.Context, task model.Tasks) {
 	log.Printf("▶️ Doing Task: %s (WID: %s)", task.TaskName, task.WorkflowInstanceID)
 
+	w.repo.UpdateTaskStatus(ctx, int(task.ID), "IN_PROGRESS")
 	time.Sleep(2 * time.Second)
 
 	// ✅ Task นี้เสร็จแล้ว
