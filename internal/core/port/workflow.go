@@ -24,6 +24,10 @@ type WorkflowRepository interface {
 	GetTasksByWorkflowID(ctx context.Context, wfID string) ([]model.Tasks, error)
 	GetTaskPending(ctx context.Context, limit int) ([]model.Tasks, error)
 	UpdateTaskStatus(ctx context.Context, id int, status string) error
+
+	// Activity Log operation
+	CreateActivityLog(ctx context.Context, log *model.ActivityLogs) error
+	GetActivityLogsByWorkflowID(ctx context.Context, wfID string) ([]model.ActivityLogs, error)
 }
 
 type WorkflowService interface {
@@ -31,4 +35,5 @@ type WorkflowService interface {
 	ListWorkflows(ctx context.Context, limit int, offset int) ([]model.WorkflowInstances, error)
 	GetWorkflowByID(ctx context.Context, id string) (*model.WorkflowInstances, error)
 	GetTasksByWorkflowID(ctx context.Context, wfID string) ([]model.Tasks, error)
+	GetActivityLogsByWorkflowID(ctx context.Context, wfID string) ([]model.ActivityLogs, error)
 }

@@ -148,3 +148,35 @@ func (r *workflowRepo) GetTasksByWorkflowID(ctx context.Context, wfID string) ([
 
 	return dest, err
 }
+
+func (r *workflowRepo) CreateActivityLog(ctx context.Context, log *model.ActivityLogs) error {
+	stmt := table.ActivityLogs.
+		INSERT(
+			table.ActivityLogs.WorkflowInstanceID,
+			table.ActivityLogs.TaskName,
+			table.ActivityLogs.EventType,
+			table.ActivityLogs.Details,
+		).MODEL(log)
+
+	_, err := stmt.ExecContext(ctx, r.db)
+
+	return err
+}
+
+func (r *workflowRepo) GetActivityLogsByWorkflowID(ctx context.Context, wfID string) ([]model.ActivityLogs, error) {
+	var dest []model.ActivityLogs
+
+	stmt := table.ActivityLogs.SELECT(
+		table.ActivityLogs.AllColumns,
+	).FROM(
+		table.ActivityLogs,
+	).WHERE(
+		table.ActivityLogs.WorkflowInstanceID.EQ(mysql.String(wfID)),
+	).ORDER_BY(
+		table.ActivityLogs.CreatedAt.ASC(),
+	)
+
+	err := stmt.QueryContext(ctx, r.db, &dest)
+
+	return dest, err
+}

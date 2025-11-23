@@ -71,3 +71,7 @@ func (s *workflowService) GetWorkflowByID(ctx context.Context, id string) (*mode
 func (s *workflowService) GetTasksByWorkflowID(ctx context.Context, wfID string) ([]model.Tasks, error) {
 	return s.repo.GetTasksByWorkflowID(ctx, wfID)
 }
+
+func (s *workflowService) GetActivityLogsByWorkflowID(ctx context.Context, wfID string) ([]model.ActivityLogs, error) {
+	return s.repo.GetActivityLogsByWorkflowID(ctx, wfID)
+}

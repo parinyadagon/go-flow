@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"time"
 
@@ -60,10 +61,46 @@ func (w *WorkflowWorker) executeTask(ctx context.Context, task model.Tasks) {
 	log.Printf("▶️ Doing Task: %s (WID: %s)", task.TaskName, task.WorkflowInstanceID)
 
 	w.repo.UpdateTaskStatus(ctx, int(task.ID), "IN_PROGRESS")
+
+	// Log task start
+	eventType := "TASK_STARTED"
+	detailsMap := map[string]interface{}{
+		"task_id":     task.ID,
+		"task_name":   task.TaskName,
+		"workflow_id": task.WorkflowInstanceID,
+	}
+	detailsJSON, _ := json.Marshal(detailsMap)
+	details := string(detailsJSON)
+	w.repo.CreateActivityLog(ctx, &model.ActivityLogs{
+		WorkflowInstanceID: task.WorkflowInstanceID,
+		TaskName:           &task.TaskName,
+		EventType:          &eventType,
+		Details:            &details,
+	})
+
+	time.Sleep(2 * time.Second)
+
 	time.Sleep(2 * time.Second)
 
 	// ✅ Task นี้เสร็จแล้ว
 	w.repo.UpdateTaskStatus(ctx, int(task.ID), "COMPLETED")
+
+	// Log task completion
+	eventTypeComplete := "TASK_COMPLETED"
+	detailsCompleteMap := map[string]interface{}{
+		"task_id":     task.ID,
+		"task_name":   task.TaskName,
+		"workflow_id": task.WorkflowInstanceID,
+		"status":      "success",
+	}
+	detailsCompleteJSON, _ := json.Marshal(detailsCompleteMap)
+	detailsComplete := string(detailsCompleteJSON)
+	w.repo.CreateActivityLog(ctx, &model.ActivityLogs{
+		WorkflowInstanceID: task.WorkflowInstanceID,
+		TaskName:           &task.TaskName,
+		EventType:          &eventTypeComplete,
+		Details:            &detailsComplete,
+	})
 
 	// 🧠 The Brain Logic: จะไปไหนต่อ?
 	w.orchestrateNextStep(ctx, task)
@@ -104,5 +141,22 @@ func (w *WorkflowWorker) orchestrateNextStep(ctx context.Context, currentTask mo
 		// 🏁 ไม่มี Step ถัดไปแล้ว -> จบงานใหญ่!
 		log.Printf("🎉 Workflow %s COMPLETED!", wf.WorkflowName)
 		w.repo.UpdateWorkflowStatus(ctx, wf.ID, "COMPLETED")
+
+		// Log workflow completion
+		eventType := "WORKFLOW_COMPLETED"
+		detailsMap := map[string]interface{}{
+			"workflow_id":   wf.ID,
+			"workflow_name": wf.WorkflowName,
+			"total_tasks":   len(steps),
+			"status":        "completed",
+		}
+		detailsJSON, _ := json.Marshal(detailsMap)
+		details := string(detailsJSON)
+		w.repo.CreateActivityLog(ctx, &model.ActivityLogs{
+			WorkflowInstanceID: wf.ID,
+			TaskName:           nil,
+			EventType:          &eventType,
+			Details:            &details,
+		})
 	}
 }

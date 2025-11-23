@@ -51,10 +51,17 @@ func (h *workflowHandler) GetWorkflowDetail(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]interface{}{"error": err.Error()})
 	}
 
-	// 3. ส่งกลับไปพร้อมกัน
+	// 3. ดึง Activity Logs
+	logs, err := h.svc.GetActivityLogsByWorkflowID(ctx, id)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]interface{}{"error": err.Error()})
+	}
+
+	// 4. ส่งกลับไปพร้อมกัน
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"workflow": wf,
-		"tasks":    tasks,
+		"workflow":     wf,
+		"tasks":        tasks,
+		"activityLogs": logs,
 	})
 }
 
