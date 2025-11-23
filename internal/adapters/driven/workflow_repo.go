@@ -180,3 +180,32 @@ func (r *workflowRepo) GetActivityLogsByWorkflowID(ctx context.Context, wfID str
 
 	return dest, err
 }
+
+func (r *workflowRepo) UpdateTaskRetryCount(ctx context.Context, id int, retryCount int) error {
+	stmt := table.Tasks.UPDATE(
+		table.Tasks.RetryCount,
+	).SET(
+		retryCount,
+	).WHERE(
+		table.Tasks.ID.EQ(mysql.Int(int64(id))),
+	)
+
+	_, err := stmt.ExecContext(ctx, r.db)
+
+	return err
+}
+
+func (r *workflowRepo) GetTasksForRetry(ctx context.Context, limit int) ([]model.Tasks, error) {
+	var dest []model.Tasks
+	stmt := table.Tasks.SELECT(
+		table.Tasks.AllColumns,
+	).FROM(
+		table.Tasks,
+	).WHERE(
+		table.Tasks.Status.EQ(mysql.String("FAILED")),
+	).LIMIT(int64(limit))
+
+	err := stmt.QueryContext(ctx, r.db, &dest)
+
+	return dest, err
+}

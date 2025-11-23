@@ -46,6 +46,7 @@ func main() {
 		cfg.Worker.PollInterval,
 		cfg.Worker.BatchSize,
 		cfg.Worker.TaskTimeout,
+		cfg.Worker.MaxRetries,
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())

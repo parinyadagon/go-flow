@@ -17,14 +17,16 @@ type WorkflowWorker struct {
 	pollInterval time.Duration
 	batchSize    int
 	taskTimeout  time.Duration
+	maxRetries   int
 }
 
-func NewWorkflowWorker(repo port.WorkflowRepository, pollInterval time.Duration, batchSize int, taskTimeout time.Duration) *WorkflowWorker {
+func NewWorkflowWorker(repo port.WorkflowRepository, pollInterval time.Duration, batchSize int, taskTimeout time.Duration, maxRetries int) *WorkflowWorker {
 	return &WorkflowWorker{
 		repo:         repo,
 		pollInterval: pollInterval,
 		batchSize:    batchSize,
 		taskTimeout:  taskTimeout,
+		maxRetries:   maxRetries,
 	}
 }
 
@@ -79,13 +81,25 @@ func (w *WorkflowWorker) processBatch(ctx context.Context) {
 }
 
 func (w *WorkflowWorker) executeTask(ctx context.Context, task model.Tasks) {
+	// Get retry count (default to 0 if nil)
+	retryCount := int32(0)
+	if task.RetryCount != nil {
+		retryCount = *task.RetryCount
+	}
+
 	logger.Info().
 		Str("task_name", task.TaskName).
 		Str("workflow_id", task.WorkflowInstanceID).
 		Int64("task_id", task.ID).
+		Int32("retry_count", retryCount).
 		Msg("Executing task")
 
-	w.repo.UpdateTaskStatus(ctx, int(task.ID), "IN_PROGRESS")
+	// Update status to IN_PROGRESS or RETRYING
+	status := "IN_PROGRESS"
+	if retryCount > 0 {
+		status = "RETRYING"
+	}
+	w.repo.UpdateTaskStatus(ctx, int(task.ID), status)
 
 	// Log task start
 	eventType := "TASK_STARTED"
@@ -93,6 +107,7 @@ func (w *WorkflowWorker) executeTask(ctx context.Context, task model.Tasks) {
 		"task_id":     task.ID,
 		"task_name":   task.TaskName,
 		"workflow_id": task.WorkflowInstanceID,
+		"retry_count": retryCount,
 	}
 	detailsJSON, err := json.Marshal(detailsMap)
 	if err != nil {
@@ -109,11 +124,108 @@ func (w *WorkflowWorker) executeTask(ctx context.Context, task model.Tasks) {
 		logger.Error().Err(err).Int64("task_id", task.ID).Msg("Failed to create task start activity log")
 	}
 
+	// Simulate task execution
 	time.Sleep(2 * time.Second)
+
+	// Simulate random failure (30% chance for first 2 attempts)
+	failureSimulated := false
+	if retryCount < 2 { // Only fail on first 2 attempts to test retry
+		if time.Now().Unix()%10 < 3 { // 30% failure rate
+			failureSimulated = true
+		}
+	}
 
 	time.Sleep(2 * time.Second)
 
-	// ✅ Task นี้เสร็จแล้ว
+	if failureSimulated {
+		// Task failed - check if we should retry
+		if retryCount >= int32(w.maxRetries) {
+			// Max retries reached - mark as FAILED
+			logger.Warn().
+				Int64("task_id", task.ID).
+				Int32("retry_count", retryCount).
+				Msg("Task failed after max retries")
+
+			w.repo.UpdateTaskStatus(ctx, int(task.ID), "FAILED")
+
+			// Log failure in activity logs
+			eventTypeFailed := "TASK_FAILED"
+			failureDetails := map[string]interface{}{
+				"task_id":     task.ID,
+				"task_name":   task.TaskName,
+				"retry_count": retryCount,
+				"reason":      "Max retries exceeded",
+			}
+			failureDetailsJSON, err := json.Marshal(failureDetails)
+			if err != nil {
+				logger.Error().Err(err).Msg("Failed to marshal failure details")
+				return
+			}
+			failureDetailsStr := string(failureDetailsJSON)
+			if err := w.repo.CreateActivityLog(ctx, &model.ActivityLogs{
+				WorkflowInstanceID: task.WorkflowInstanceID,
+				TaskName:           &task.TaskName,
+				EventType:          &eventTypeFailed,
+				Details:            &failureDetailsStr,
+			}); err != nil {
+				logger.Error().Err(err).Msg("Failed to create activity log for task failure")
+			}
+
+			// Mark workflow as FAILED
+			w.repo.UpdateWorkflowStatus(ctx, task.WorkflowInstanceID, "FAILED")
+			return
+		}
+
+		// Increment retry count and schedule retry
+		newRetryCount := int(retryCount) + 1
+		if err := w.repo.UpdateTaskRetryCount(ctx, int(task.ID), newRetryCount); err != nil {
+			logger.Error().Err(err).Int64("task_id", task.ID).Msg("Failed to update retry count")
+			return
+		}
+
+		// Calculate exponential backoff delay (2^retryCount seconds)
+		backoffDelay := time.Duration(1<<uint(newRetryCount)) * time.Second
+		logger.Info().
+			Int64("task_id", task.ID).
+			Int("retry_count", newRetryCount).
+			Dur("backoff_delay", backoffDelay).
+			Msg("Task failed, scheduling retry with exponential backoff")
+
+		// Update to FAILED status temporarily
+		w.repo.UpdateTaskStatus(ctx, int(task.ID), "FAILED")
+
+		// Log retry in activity logs
+		eventTypeRetry := "TASK_RETRY"
+		retryDetails := map[string]interface{}{
+			"task_id":       task.ID,
+			"task_name":     task.TaskName,
+			"retry_count":   newRetryCount,
+			"backoff_delay": backoffDelay.String(),
+		}
+		retryDetailsJSON, err := json.Marshal(retryDetails)
+		if err != nil {
+			logger.Error().Err(err).Msg("Failed to marshal retry details")
+			return
+		}
+		retryDetailsStr := string(retryDetailsJSON)
+		if err := w.repo.CreateActivityLog(ctx, &model.ActivityLogs{
+			WorkflowInstanceID: task.WorkflowInstanceID,
+			TaskName:           &task.TaskName,
+			EventType:          &eventTypeRetry,
+			Details:            &retryDetailsStr,
+		}); err != nil {
+			logger.Error().Err(err).Msg("Failed to create activity log for task retry")
+		}
+
+		// Sleep for exponential backoff
+		time.Sleep(backoffDelay)
+
+		// Reset to PENDING so worker can pick it up again
+		w.repo.UpdateTaskStatus(ctx, int(task.ID), "PENDING")
+		return
+	}
+
+	// ✅ Task completed successfully
 	w.repo.UpdateTaskStatus(ctx, int(task.ID), "COMPLETED")
 
 	// Log task completion
@@ -123,6 +235,7 @@ func (w *WorkflowWorker) executeTask(ctx context.Context, task model.Tasks) {
 		"task_name":   task.TaskName,
 		"workflow_id": task.WorkflowInstanceID,
 		"status":      "success",
+		"retry_count": retryCount,
 	}
 	detailsCompleteJSON, err := json.Marshal(detailsCompleteMap)
 	if err != nil {

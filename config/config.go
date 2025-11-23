@@ -29,6 +29,7 @@ type WorkerConfig struct {
 	PollInterval time.Duration
 	BatchSize    int
 	TaskTimeout  time.Duration
+	MaxRetries   int
 }
 
 type Config struct {
@@ -62,6 +63,7 @@ func Load() (*Config, error) {
 			PollInterval: getEnvAsDuration("WORKER_POLL_INTERVAL", 5*time.Second),
 			BatchSize:    getEnvAsInt("WORKER_BATCH_SIZE", 10),
 			TaskTimeout:  getEnvAsDuration("WORKER_TASK_TIMEOUT", 30*time.Second),
+			MaxRetries:   getEnvAsInt("WORKER_MAX_RETRIES", 3),
 		},
 		Environment: getEnv("ENV", "development"),
 	}

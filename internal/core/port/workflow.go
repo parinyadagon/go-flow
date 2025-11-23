@@ -24,6 +24,8 @@ type WorkflowRepository interface {
 	GetTasksByWorkflowID(ctx context.Context, wfID string) ([]model.Tasks, error)
 	GetTaskPending(ctx context.Context, limit int) ([]model.Tasks, error)
 	UpdateTaskStatus(ctx context.Context, id int, status string) error
+	UpdateTaskRetryCount(ctx context.Context, id int, retryCount int) error
+	GetTasksForRetry(ctx context.Context, limit int) ([]model.Tasks, error)
 
 	// Activity Log operation
 	CreateActivityLog(ctx context.Context, log *model.ActivityLogs) error
