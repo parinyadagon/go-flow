@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Plus, Eye, RefreshCw, Loader2, AlertCircle } from "lucide-react";
+import { Plus, Eye, RefreshCw, Loader2, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface Workflow {
   ID: string;
@@ -12,22 +12,41 @@ interface Workflow {
   UpdatedAt: string;
 }
 
+interface WorkflowsResponse {
+  workflows: Workflow[];
+  limit: number;
+  offset: number;
+  total: number;
+  totalPages: number;
+  currentPage: number;
+}
+
 export default function Home() {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
 
-  useEffect(() => {
-    fetch("http://localhost:8080/workflows")
+  const fetchWorkflows = (page: number) => {
+    setLoading(true);
+    setError(null);
+    const offset = (page - 1) * itemsPerPage;
+
+    fetch(`http://localhost:8080/workflows?limit=${itemsPerPage}&offset=${offset}`)
       .then((res) => {
         if (!res.ok) {
           throw new Error(`HTTP error! status: ${res.status}`);
         }
         return res.json();
       })
-      .then((data) => {
+      .then((data: WorkflowsResponse) => {
         console.log("API Response:", data);
         setWorkflows(data.workflows || []);
+        setTotal(data.total || 0);
+        setTotalPages(data.totalPages || 1);
         setLoading(false);
       })
       .catch((err) => {
@@ -35,7 +54,28 @@ export default function Home() {
         setError(err.message);
         setLoading(false);
       });
-  }, []);
+  };
+
+  useEffect(() => {
+    fetchWorkflows(currentPage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage]);
+
+  const handlePreviousPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+
+  const handleNextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
+
+  const refreshData = () => {
+    fetchWorkflows(currentPage);
+  };
 
   if (loading) {
     return (
@@ -68,7 +108,10 @@ export default function Home() {
             </div>
             <div className="flex gap-3">
               <button
-                onClick={() => window.location.reload()}
+                onClick={() => {
+                  setError(null);
+                  fetchWorkflows(currentPage);
+                }}
                 className="flex-1 px-4 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-800 transition-all duration-200 flex items-center justify-center gap-2 font-medium">
                 <RefreshCw className="w-4 h-4" />
                 Try Again
@@ -84,20 +127,6 @@ export default function Home() {
       </div>
     );
   }
-
-  const refreshData = () => {
-    setLoading(true);
-    fetch("http://localhost:8080/workflows")
-      .then((res) => res.json())
-      .then((data) => {
-        setWorkflows(data.workflows || []);
-        setLoading(false);
-      })
-      .catch((err) => {
-        setError(err.message);
-        setLoading(false);
-      });
-  };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-white transition-colors">
@@ -177,6 +206,45 @@ export default function Home() {
               )}
             </tbody>
           </table>
+
+          {/* Pagination Controls */}
+          <div className="bg-gray-50 dark:bg-slate-700/50 px-6 py-4 border-t border-gray-200 dark:border-slate-700">
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-gray-600 dark:text-gray-400">
+                Page <span className="font-semibold text-gray-900 dark:text-white">{currentPage}</span> of{" "}
+                <span className="font-semibold text-gray-900 dark:text-white">{totalPages}</span>
+                {total > 0 && (
+                  <span className="ml-2">
+                    (Total: {total} {total === 1 ? "workflow" : "workflows"})
+                  </span>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handlePreviousPage}
+                  disabled={currentPage === 1}
+                  className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 ${
+                    currentPage === 1
+                      ? "bg-gray-100 dark:bg-slate-800 text-gray-400 dark:text-slate-600 cursor-not-allowed"
+                      : "bg-white dark:bg-slate-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700 shadow-sm hover:shadow-md"
+                  }`}>
+                  <ChevronLeft className="w-4 h-4" />
+                  Previous
+                </button>
+                <button
+                  onClick={handleNextPage}
+                  disabled={currentPage >= totalPages}
+                  className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 ${
+                    currentPage >= totalPages
+                      ? "bg-gray-100 dark:bg-slate-800 text-gray-400 dark:text-slate-600 cursor-not-allowed"
+                      : "bg-white dark:bg-slate-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700 shadow-sm hover:shadow-md"
+                  }`}>
+                  Next
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

@@ -122,9 +122,22 @@ func (h *workflowHandler) ListWorkflows(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]interface{}{"error": err.Error()})
 	}
 
+	// Get total count for pagination
+	total, err := h.svc.CountWorkflows(c.Request().Context())
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]interface{}{"error": err.Error()})
+	}
+
+	// Calculate pagination metadata
+	totalPages := (total + int64(limit) - 1) / int64(limit)
+	currentPage := (offset / limit) + 1
+
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"workflows": workflows,
-		"limit":     limit,
-		"offset":    offset,
+		"workflows":   workflows,
+		"limit":       limit,
+		"offset":      offset,
+		"total":       total,
+		"totalPages":  totalPages,
+		"currentPage": currentPage,
 	})
 }

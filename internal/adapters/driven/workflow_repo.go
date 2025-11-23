@@ -77,6 +77,25 @@ func (r *workflowRepo) ListWorkflows(ctx context.Context, limit int, offset int)
 	return dest, err
 }
 
+func (r *workflowRepo) CountWorkflows(ctx context.Context) (int64, error) {
+	var count struct {
+		Total int64
+	}
+
+	stmt := mysql.SELECT(
+		mysql.COUNT(mysql.STAR).AS("total"),
+	).FROM(
+		table.WorkflowInstances,
+	)
+
+	err := stmt.QueryContext(ctx, r.db, &count)
+	if err != nil {
+		return 0, err
+	}
+
+	return count.Total, nil
+}
+
 func (r *workflowRepo) UpdateWorkflowStatus(ctx context.Context, id string, status string) error {
 	stmt := table.WorkflowInstances.UPDATE(
 		table.WorkflowInstances.Status,

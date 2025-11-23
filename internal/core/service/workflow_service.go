@@ -65,6 +65,10 @@ func (s *workflowService) ListWorkflows(ctx context.Context, limit int, offset i
 	return s.repo.ListWorkflows(ctx, limit, offset)
 }
 
+func (s *workflowService) CountWorkflows(ctx context.Context) (int64, error) {
+	return s.repo.CountWorkflows(ctx)
+}
+
 func (s *workflowService) GetWorkflowByID(ctx context.Context, id string) (*model.WorkflowInstances, error) {
 	return s.repo.GetWorkflowByID(ctx, id)
 }
