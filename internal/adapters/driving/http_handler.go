@@ -4,28 +4,62 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/labstack/echo/v4"
 	"github.com/parinyadagon/go-workflow/internal/core/port"
 )
 
 type workflowHandler struct {
-	svc port.WorkflowService
+	svc       port.WorkflowService
+	validator *validator.Validate
 }
 
 func NewWorkflowHandler(svc port.WorkflowService) *workflowHandler {
-	return &workflowHandler{svc: svc}
+	return &workflowHandler{
+		svc:       svc,
+		validator: validator.New(),
+	}
 }
 
 func (h *workflowHandler) StartWorkflow(c echo.Context) error {
 	req := &port.CreateWorkflowRequest{}
 
 	if err := c.Bind(req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]interface{}{"error": "Invalid request body"})
+		return c.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error":   "Invalid request body",
+			"details": err.Error(),
+		})
+	}
+
+	// Validate request
+	if err := h.validator.Struct(req); err != nil {
+		validationErrors := make(map[string]string)
+		for _, err := range err.(validator.ValidationErrors) {
+			field := err.Field()
+			tag := err.Tag()
+			switch tag {
+			case "required":
+				validationErrors[field] = field + " is required"
+			case "min":
+				validationErrors[field] = field + " must be at least " + err.Param() + " characters"
+			case "max":
+				validationErrors[field] = field + " must be at most " + err.Param() + " characters"
+			default:
+				validationErrors[field] = field + " is invalid"
+			}
+		}
+		return c.JSON(http.StatusBadRequest, map[string]interface{}{
+			"error":  "Validation failed",
+			"fields": validationErrors,
+		})
 	}
 
 	result, err := h.svc.StartNewWorkflow(c.Request().Context(), req)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]interface{}{"error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+			"error":   "Failed to create workflow",
+			"details": err.Error(),
+		})
 	}
 
 	return c.JSON(http.StatusCreated, map[string]interface{}{

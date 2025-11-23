@@ -61,6 +61,30 @@ func main() {
 		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
 	}))
 
+	// Health check endpoints
+	e.GET("/health", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]string{
+			"status":  "ok",
+			"service": "go-flow",
+		})
+	})
+
+	e.GET("/readiness", func(c echo.Context) error {
+		// Check database connection
+		if err := db.Ping(); err != nil {
+			logger.Error().Err(err).Msg("Database ping failed")
+			return c.JSON(http.StatusServiceUnavailable, map[string]interface{}{
+				"status": "unavailable",
+				"error":  "database connection failed",
+			})
+		}
+		return c.JSON(http.StatusOK, map[string]string{
+			"status":   "ready",
+			"database": "connected",
+		})
+	})
+
+	// Workflow endpoints
 	e.GET("/workflows", hdl.ListWorkflows)
 	e.POST("/workflows", hdl.StartWorkflow)
 	e.GET("/workflows/:id", hdl.GetWorkflowDetail)

@@ -7,7 +7,7 @@ import (
 )
 
 type CreateWorkflowRequest struct {
-	WorkflowName string         `json:"workflow_name"`
+	WorkflowName string         `json:"workflow_name" validate:"required,min=3,max=100"`
 	InputPayload map[string]any `json:"input_payload"`
 }
 
