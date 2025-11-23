@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,20 +16,24 @@ import (
 	handler "github.com/parinyadagon/go-workflow/internal/adapters/driving"
 	"github.com/parinyadagon/go-workflow/internal/core/service"
 	"github.com/parinyadagon/go-workflow/internal/core/worker"
+	"github.com/parinyadagon/go-workflow/pkg/logger"
 )
 
 func main() {
 
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("Failed to load configuration: %v", err)
+		logger.Fatal().Err(err).Msg("Failed to load configuration")
 	}
 
-	log.Printf("Starting application in %s mode", cfg.Environment)
+	// Initialize logger
+	logger.Init(cfg.Environment)
+
+	logger.Info().Str("environment", cfg.Environment).Msg("Starting application")
 
 	db, err := db.NewConnection(&cfg.Database)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		logger.Fatal().Err(err).Msg("Failed to connect to database")
 	}
 	defer db.Close()
 
@@ -38,7 +41,12 @@ func main() {
 	svc := service.NewWorkflowService(repo)
 	hdl := handler.NewWorkflowHandler(svc)
 
-	workerNode := worker.NewWorkflowWorker(repo)
+	workerNode := worker.NewWorkflowWorker(
+		repo,
+		cfg.Worker.PollInterval,
+		cfg.Worker.BatchSize,
+		cfg.Worker.TaskTimeout,
+	)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -69,15 +77,15 @@ func main() {
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 	<-quit
 
-	log.Println("Gracefully shutting down...")
+	logger.Info().Msg("Gracefully shutting down...")
 
 	ctxShutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := e.Shutdown(ctxShutdown); err != nil {
-		e.Logger.Fatal(err)
+		logger.Fatal().Err(err).Msg("Server shutdown failed")
 	}
 
-	log.Println("Server exited")
+	logger.Info().Msg("Server exited")
 
 }

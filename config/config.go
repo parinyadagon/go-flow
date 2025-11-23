@@ -25,9 +25,16 @@ type ServerConfig struct {
 	Port int
 }
 
+type WorkerConfig struct {
+	PollInterval time.Duration
+	BatchSize    int
+	TaskTimeout  time.Duration
+}
+
 type Config struct {
 	Database    DatabaseConfig
 	Server      ServerConfig
+	Worker      WorkerConfig
 	Environment string
 }
 
@@ -50,6 +57,11 @@ func Load() (*Config, error) {
 		Server: ServerConfig{
 			Host: getEnv("SERVER_HOST", "localhost"),
 			Port: getEnvAsInt("SERVER_PORT", 8080),
+		},
+		Worker: WorkerConfig{
+			PollInterval: getEnvAsDuration("WORKER_POLL_INTERVAL", 5*time.Second),
+			BatchSize:    getEnvAsInt("WORKER_BATCH_SIZE", 10),
+			TaskTimeout:  getEnvAsDuration("WORKER_TASK_TIMEOUT", 30*time.Second),
 		},
 		Environment: getEnv("ENV", "development"),
 	}
