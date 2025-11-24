@@ -3,31 +3,23 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"time"
 
 	"github.com/parinyadagon/go-workflow/gen/go_flow/model"
 	"github.com/parinyadagon/go-workflow/internal/core/port"
-	"github.com/parinyadagon/go-workflow/internal/core/service"
+	"github.com/parinyadagon/go-workflow/internal/core/registry"
 	"github.com/parinyadagon/go-workflow/pkg/logger"
 )
 
 type WorkflowWorker struct {
 	repo         port.WorkflowRepository
+	registry     *registry.WorkflowRegistry
 	pollInterval time.Duration
 	batchSize    int
 	taskTimeout  time.Duration
 	maxRetries   int
-}
-
-func NewWorkflowWorker(repo port.WorkflowRepository, pollInterval time.Duration, batchSize int, taskTimeout time.Duration, maxRetries int) *WorkflowWorker {
-	return &WorkflowWorker{
-		repo:         repo,
-		pollInterval: pollInterval,
-		batchSize:    batchSize,
-		taskTimeout:  taskTimeout,
-		maxRetries:   maxRetries,
-	}
 }
 
 func (w *WorkflowWorker) Start(ctx context.Context) {
@@ -114,146 +106,51 @@ func (w *WorkflowWorker) executeTask(ctx context.Context, task model.Tasks) {
 		logger.Error().Err(err).Int64("task_id", task.ID).Msg("Failed to marshal task start details")
 		return
 	}
+
 	details := string(detailsJSON)
-	if err := w.repo.CreateActivityLog(ctx, &model.ActivityLogs{
+	err = w.repo.CreateActivityLog(ctx, &model.ActivityLogs{
 		WorkflowInstanceID: task.WorkflowInstanceID,
 		TaskName:           &task.TaskName,
 		EventType:          &eventType,
 		Details:            &details,
-	}); err != nil {
+	})
+	if err != nil {
 		logger.Error().Err(err).Int64("task_id", task.ID).Msg("Failed to create task start activity log")
 	}
 
-	// Simulate task execution
-	time.Sleep(2 * time.Second)
-
-	// Simulate random failure (30% chance for first 2 attempts)
-	failureSimulated := false
-	if retryCount < 2 { // Only fail on first 2 attempts to test retry
-		if time.Now().Unix()%10 < 3 { // 30% failure rate
-			failureSimulated = true
-		}
-	}
-
-	time.Sleep(2 * time.Second)
-
-	if failureSimulated {
-		// Task failed - check if we should retry
-		if retryCount >= int32(w.maxRetries) {
-			// Max retries reached - mark as FAILED
-			logger.Warn().
-				Int64("task_id", task.ID).
-				Int32("retry_count", retryCount).
-				Msg("Task failed after max retries")
-
-			w.repo.UpdateTaskStatus(ctx, int(task.ID), "FAILED")
-
-			// Log failure in activity logs
-			eventTypeFailed := "TASK_FAILED"
-			failureDetails := map[string]interface{}{
-				"task_id":     task.ID,
-				"task_name":   task.TaskName,
-				"retry_count": retryCount,
-				"reason":      "Max retries exceeded",
-			}
-			failureDetailsJSON, err := json.Marshal(failureDetails)
-			if err != nil {
-				logger.Error().Err(err).Msg("Failed to marshal failure details")
-				return
-			}
-			failureDetailsStr := string(failureDetailsJSON)
-			if err := w.repo.CreateActivityLog(ctx, &model.ActivityLogs{
-				WorkflowInstanceID: task.WorkflowInstanceID,
-				TaskName:           &task.TaskName,
-				EventType:          &eventTypeFailed,
-				Details:            &failureDetailsStr,
-			}); err != nil {
-				logger.Error().Err(err).Msg("Failed to create activity log for task failure")
-			}
-
-			// Mark workflow as FAILED
-			w.repo.UpdateWorkflowStatus(ctx, task.WorkflowInstanceID, "FAILED")
-			return
-		}
-
-		// Increment retry count and schedule retry
-		newRetryCount := int(retryCount) + 1
-		if err := w.repo.UpdateTaskRetryCount(ctx, int(task.ID), newRetryCount); err != nil {
-			logger.Error().Err(err).Int64("task_id", task.ID).Msg("Failed to update retry count")
-			return
-		}
-
-		// Calculate exponential backoff delay (2^retryCount seconds)
-		backoffDelay := time.Duration(1<<uint(newRetryCount)) * time.Second
-		logger.Info().
-			Int64("task_id", task.ID).
-			Int("retry_count", newRetryCount).
-			Dur("backoff_delay", backoffDelay).
-			Msg("Task failed, scheduling retry with exponential backoff")
-
-		// Update to FAILED status temporarily
-		w.repo.UpdateTaskStatus(ctx, int(task.ID), "FAILED")
-
-		// Log retry in activity logs
-		eventTypeRetry := "TASK_RETRY"
-		retryDetails := map[string]interface{}{
-			"task_id":       task.ID,
-			"task_name":     task.TaskName,
-			"retry_count":   newRetryCount,
-			"backoff_delay": backoffDelay.String(),
-		}
-		retryDetailsJSON, err := json.Marshal(retryDetails)
-		if err != nil {
-			logger.Error().Err(err).Msg("Failed to marshal retry details")
-			return
-		}
-		retryDetailsStr := string(retryDetailsJSON)
-		if err := w.repo.CreateActivityLog(ctx, &model.ActivityLogs{
-			WorkflowInstanceID: task.WorkflowInstanceID,
-			TaskName:           &task.TaskName,
-			EventType:          &eventTypeRetry,
-			Details:            &retryDetailsStr,
-		}); err != nil {
-			logger.Error().Err(err).Msg("Failed to create activity log for task retry")
-		}
-
-		// Sleep for exponential backoff
-		time.Sleep(backoffDelay)
-
-		// Reset to PENDING so worker can pick it up again
-		w.repo.UpdateTaskStatus(ctx, int(task.ID), "PENDING")
-		return
-	}
-
-	// ✅ Task completed successfully
-	w.repo.UpdateTaskStatus(ctx, int(task.ID), "COMPLETED")
-
-	// Log task completion
-	eventTypeComplete := "TASK_COMPLETED"
-	detailsCompleteMap := map[string]interface{}{
-		"task_id":     task.ID,
-		"task_name":   task.TaskName,
-		"workflow_id": task.WorkflowInstanceID,
-		"status":      "success",
-		"retry_count": retryCount,
-	}
-	detailsCompleteJSON, err := json.Marshal(detailsCompleteMap)
+	// ดึง workflow definition
+	wf, err := w.repo.GetWorkflowByID(ctx, task.WorkflowInstanceID)
 	if err != nil {
-		logger.Error().Err(err).Int64("task_id", task.ID).Msg("Failed to marshal task completion details")
+		logger.Error().Err(err).Msg("Failed to get workflow")
+		w.handleTaskFailure(ctx, task, retryCount, err)
 		return
 	}
-	detailsComplete := string(detailsCompleteJSON)
-	if err := w.repo.CreateActivityLog(ctx, &model.ActivityLogs{
-		WorkflowInstanceID: task.WorkflowInstanceID,
-		TaskName:           &task.TaskName,
-		EventType:          &eventTypeComplete,
-		Details:            &detailsComplete,
-	}); err != nil {
-		logger.Error().Err(err).Int64("task_id", task.ID).Msg("Failed to create task completion activity log")
+
+	// ดึง task function จาก registry
+	taskFunc, exists := w.registry.GetTaskFunc(wf.WorkflowName, task.TaskName)
+	if !exists {
+		err := errors.New("task function not found: " + task.TaskName)
+		logger.Error().Err(err).Str("task_name", task.TaskName).Msg("No task function registered")
+		w.handleTaskFailure(ctx, task, retryCount, err)
+		return
 	}
 
-	// 🧠 The Brain Logic: จะไปไหนต่อ?
-	w.orchestrateNextStep(ctx, task)
+	// Execute with timeout
+	execCtx, cancel := context.WithTimeout(ctx, w.taskTimeout)
+	defer cancel()
+
+	err = taskFunc(execCtx, &task)
+	if err != nil {
+		logger.Error().Err(err).
+			Str("task_name", task.TaskName).
+			Int64("task_id", task.ID).
+			Msg("Task execution failed")
+		w.handleTaskFailure(ctx, task, retryCount, err)
+		return
+	}
+
+	// Task succeeded
+	w.handleTaskSuccess(ctx, task, retryCount)
 }
 
 func (w *WorkflowWorker) orchestrateNextStep(ctx context.Context, currentTask model.Tasks) {
@@ -264,12 +161,15 @@ func (w *WorkflowWorker) orchestrateNextStep(ctx context.Context, currentTask mo
 		return
 	}
 
-	// 2. ดูลายแทง
-	steps := service.WorkflowDefinitions[wf.WorkflowName]
+	def, exists := w.registry.GetDefinition(wf.WorkflowName)
+	if !exists {
+		logger.Error().Str("workflow_name", wf.WorkflowName).Msg("Workflow definition not found")
+		return
+	}
 
 	// 3. หาว่าเราอยู่ Step ไหน
 	currentStepIndex := -1
-	for i, name := range steps {
+	for i, name := range def.TaskNames {
 		if name == currentTask.TaskName {
 			currentStepIndex = i
 			break
@@ -277,10 +177,10 @@ func (w *WorkflowWorker) orchestrateNextStep(ctx context.Context, currentTask mo
 	}
 
 	// 4. ตัดสินใจ
-	if currentStepIndex != -1 && currentStepIndex < len(steps)-1 {
+	if currentStepIndex != -1 && currentStepIndex < len(def.TaskNames)-1 {
 		// 👉 มี Step ถัดไป! สร้าง Task ใหม่รอไว้เลย
 		status := model.TasksStatus_Pending
-		nextTaskName := steps[currentStepIndex+1]
+		nextTaskName := def.TaskNames[currentStepIndex+1]
 		logger.Info().Str("next_task", nextTaskName).Str("workflow_id", currentTask.WorkflowInstanceID).Msg("Moving to next step")
 
 		newTask := &model.Tasks{
@@ -307,7 +207,7 @@ func (w *WorkflowWorker) orchestrateNextStep(ctx context.Context, currentTask mo
 		detailsMap := map[string]interface{}{
 			"workflow_id":   wf.ID,
 			"workflow_name": wf.WorkflowName,
-			"total_tasks":   len(steps),
+			"total_tasks":   len(def.TaskNames),
 			"status":        "completed",
 		}
 		detailsJSON, err := json.Marshal(detailsMap)
@@ -324,5 +224,184 @@ func (w *WorkflowWorker) orchestrateNextStep(ctx context.Context, currentTask mo
 		}); err != nil {
 			logger.Error().Err(err).Str("workflow_id", wf.ID).Msg("Failed to create workflow completion activity log")
 		}
+	}
+}
+
+// handlerTaskFailure handles task failure with retry logic
+func (w *WorkflowWorker) handleTaskFailure(ctx context.Context, task model.Tasks, retryCount int32, taskErr error) {
+	// Check if we should retry
+	if retryCount >= int32(w.maxRetries) {
+		// Max retries reached - mark as FAILED
+		logger.Warn().
+			Int64("task_id", task.ID).
+			Int32("retry_count", retryCount).
+			Msg("Task failed after max retries")
+
+		w.repo.UpdateTaskStatus(ctx, int(task.ID), "FAILED")
+
+		// Log failure in activity logs
+		eventTypeFailed := "TASK_FAILED"
+		failureDefaults := map[string]any{
+			"task_id":     task.ID,
+			"task_name":   task.TaskName,
+			"retry_count": retryCount,
+			"reason":      "Max retries exceeded",
+			"error":       taskErr.Error(),
+		}
+		failureDefaultsJSON, _ := json.Marshal(failureDefaults)
+		failureDefaultsStr := string(failureDefaultsJSON)
+		w.repo.CreateActivityLog(ctx, &model.ActivityLogs{
+			WorkflowInstanceID: task.WorkflowInstanceID,
+			TaskName:           &task.TaskName,
+			EventType:          &eventTypeFailed,
+			Details:            &failureDefaultsStr,
+		})
+
+		// Mark workflow as FAILED
+		w.repo.UpdateWorkflowStatus(ctx, task.WorkflowInstanceID, "FAILED")
+
+		return
+	}
+
+	// Increment retry count and schedule retry
+	newRetryCount := int(retryCount) + 1
+	if err := w.repo.UpdateTaskRetryCount(ctx, int(task.ID), newRetryCount); err != nil {
+		logger.Error().Err(err).Int64("task_id", task.ID).Msg("Failed to update retry count")
+		return
+	}
+
+	// Calculate exponential backoff delay (2^retryCount second)
+	backoffDelay := time.Duration(1<<uint(newRetryCount)) * time.Second
+	logger.Info().
+		Int64("task_id", task.ID).
+		Int("retry_count", newRetryCount).
+		Dur("backoff_delay", backoffDelay).
+		Str("error", taskErr.Error()).
+		Msg("Task failed, scheduling retry with exponential backoff")
+
+	// Update to FAILED status temporarily
+	w.repo.UpdateTaskStatus(ctx, int(task.ID), "FAILED")
+
+	// Log retry in activity logs
+	eventTypeRetry := "TASK_RETRY"
+	retryDetails := map[string]any{
+		"task_id":       task.ID,
+		"task_name":     task.TaskName,
+		"retry_count":   newRetryCount,
+		"backoff_delay": backoffDelay.String(),
+		"error":         taskErr.Error(),
+	}
+	retryDetailsJSON, _ := json.Marshal(retryDetails)
+	retryDetailsStr := string(retryDetailsJSON)
+	w.repo.CreateActivityLog(ctx, &model.ActivityLogs{
+		WorkflowInstanceID: task.WorkflowInstanceID,
+		TaskName:           &task.TaskName,
+		EventType:          &eventTypeRetry,
+		Details:            &retryDetailsStr,
+	})
+
+	// Sleep for exponential backoff
+	time.Sleep(backoffDelay)
+
+	// Reset to PENDING so worker can pick it up again
+	w.repo.UpdateTaskStatus(ctx, int(task.ID), "PENDING")
+}
+
+// handleTaskSuccess handles successfully task completion
+func (w *WorkflowWorker) handleTaskSuccess(ctx context.Context, task model.Tasks, retryCount int32) {
+	// Update task output payload if executor modified it
+	if task.OutputPayload != nil {
+		// Optionally save output payload to database
+		// w.repo.UpdateTaskOutput(ctx, int(task.ID), *task.OutputPayload)
+	}
+
+	// Mark task as COMPLETED
+	w.repo.UpdateTaskStatus(ctx, int(task.ID), "COMPLETED")
+
+	// Log task completion
+	eventTypeComplete := "TASK_COMPLETED"
+	detailsCompleteMap := map[string]any{
+		"task_id":     task.ID,
+		"task_name":   task.TaskName,
+		"workflow_id": task.WorkflowInstanceID,
+		"status":      "success",
+		"retry_count": retryCount,
+	}
+	detailsCompleteJSON, _ := json.Marshal(detailsCompleteMap)
+	detailsComplete := string(detailsCompleteJSON)
+	w.repo.CreateActivityLog(ctx, &model.ActivityLogs{
+		WorkflowInstanceID: task.WorkflowInstanceID,
+		TaskName:           &task.TaskName,
+		EventType:          &eventTypeComplete,
+		Details:            &detailsComplete,
+	})
+
+	// Orchestrate next step
+	w.orchestrateNextStep(ctx, task)
+}
+
+// =================================
+// Builder Pattern
+// =================================
+
+// WorkerBuilder providers a fluent API for constructing WorkflowWorker
+type WorkBuilder struct {
+	repo         port.WorkflowRepository
+	registry     *registry.WorkflowRegistry
+	pollInterval time.Duration
+	batchSize    int
+	taskTimeout  time.Duration
+	maxRetries   int
+}
+
+// NewWorkerBuilder creates a new WorkerBuilder with default values
+func NewWorkerBuilder(repo port.WorkflowRepository, reg *registry.WorkflowRegistry) *WorkBuilder {
+	return &WorkBuilder{
+		repo:         repo,
+		registry:     reg,
+		pollInterval: 5 * time.Second,
+		batchSize:    10,
+		taskTimeout:  30 * time.Second,
+		maxRetries:   3,
+	}
+}
+
+// WithPollInterval sets the polling interval
+func (b *WorkBuilder) WithPollInterval(d time.Duration) *WorkBuilder {
+	b.pollInterval = d
+
+	return b
+}
+
+// WithBatchSize sets the batch size for task processing
+func (b *WorkBuilder) WithBatchSize(size int) *WorkBuilder {
+	b.batchSize = size
+
+	return b
+}
+
+// WithTaskTimeout sets the timeout for task execution
+func (b *WorkBuilder) WithTaskTimeout(d time.Duration) *WorkBuilder {
+	b.taskTimeout = d
+
+	return b
+}
+
+// WithMaxRetries size the maximum retry attempts
+func (b *WorkBuilder) WithMaxRetries(n int) *WorkBuilder {
+	b.maxRetries = n
+
+	return b
+}
+
+// Build creates the workflowWorker instance
+func (b *WorkBuilder) Build() *WorkflowWorker {
+	return &WorkflowWorker{
+		repo:         b.repo,
+		registry:     b.registry,
+		pollInterval: b.pollInterval,
+		batchSize:    b.batchSize,
+		taskTimeout:  b.taskTimeout,
+		maxRetries:   b.maxRetries,
 	}
 }

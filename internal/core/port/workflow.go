@@ -40,4 +40,5 @@ type WorkflowService interface {
 	GetWorkflowByID(ctx context.Context, id string) (*model.WorkflowInstances, error)
 	GetTasksByWorkflowID(ctx context.Context, wfID string) ([]model.Tasks, error)
 	GetActivityLogsByWorkflowID(ctx context.Context, wfID string) ([]model.ActivityLogs, error)
+	ListAvailableWorkflows(ctx context.Context) []string
 }

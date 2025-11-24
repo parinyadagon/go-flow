@@ -8,18 +8,23 @@ import (
 	"github.com/google/uuid"
 	"github.com/parinyadagon/go-workflow/gen/go_flow/model"
 	"github.com/parinyadagon/go-workflow/internal/core/port"
+	"github.com/parinyadagon/go-workflow/internal/core/registry"
 )
 
 type workflowService struct {
-	repo port.WorkflowRepository
+	repo     port.WorkflowRepository
+	registry *registry.WorkflowRegistry
 }
 
-func NewWorkflowService(repo port.WorkflowRepository) port.WorkflowService {
-	return &workflowService{repo: repo}
+func NewWorkflowService(repo port.WorkflowRepository, reg *registry.WorkflowRegistry) port.WorkflowService {
+	return &workflowService{
+		repo:     repo,
+		registry: reg,
+	}
 }
 
-var WorkflowDefinitions = map[string][]string{
-	"OrderProcess": {"ValidateOrder", "DeductMoney", "SendEmail"},
+func (s *workflowService) ListAvailableWorkflows(ctx context.Context) []string {
+	return s.registry.ListWorkflows()
 }
 
 func (s *workflowService) StartNewWorkflow(ctx context.Context, req *port.CreateWorkflowRequest) (*model.WorkflowInstances, error) {
@@ -36,11 +41,12 @@ func (s *workflowService) StartNewWorkflow(ctx context.Context, req *port.Create
 		CurrentInput: &inputStr,
 	}
 
-	steps, exists := WorkflowDefinitions[req.WorkflowName]
-	if !exists || len(steps) == 0 {
+	def, exists := s.registry.GetDefinition(req.WorkflowName)
+	if !exists || len(def.TaskNames) == 0 {
 		return nil, fmt.Errorf("unknown workflow: %s", req.WorkflowName)
 	}
-	firstTaskName := steps[0] // "ValidateOrder"
+
+	firstTaskName := def.TaskNames[0]
 	taskStatus := model.TasksStatus_Pending
 
 	firstTask := &model.Tasks{

@@ -68,6 +68,14 @@ func (h *workflowHandler) StartWorkflow(c echo.Context) error {
 	})
 }
 
+// GET /workflows/available
+func (h *workflowHandler) ListAvailableWorkflows(c echo.Context) error {
+	workflows := h.svc.ListAvailableWorkflows(c.Request().Context())
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"workflows": workflows,
+	})
+}
+
 // GET /workflows/:id
 func (h *workflowHandler) GetWorkflowDetail(c echo.Context) error {
 	id := c.Param("id")
