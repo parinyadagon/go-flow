@@ -12,6 +12,7 @@ interface Task {
   TaskName: string;
   Status: string;
   RetryCount?: number;
+  MaxRetries?: number;
   UpdatedAt?: string;
 }
 
@@ -41,6 +42,7 @@ export default function WorkflowDetail() {
   const params = useParams();
   const workflowId = params.id as string;
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [retryingTaskId, setRetryingTaskId] = useState<number | null>(null);
 
   // 🔥 Magic: refreshInterval จะยิง API ทุก 1 วินาทีเพื่ออัปเดตสถานะ Real-time!
   const { data, error, mutate } = useSWR<WorkflowData>(workflowId ? `http://localhost:8080/workflows/${workflowId}` : null, fetcher, {
@@ -51,6 +53,19 @@ export default function WorkflowDetail() {
     setIsRefreshing(true);
     await mutate();
     setTimeout(() => setIsRefreshing(false), 500);
+  };
+
+  const handleRetryTask = async (taskId: number) => {
+    try {
+      setRetryingTaskId(taskId);
+      await axios.post(`http://localhost:8080/tasks/${taskId}/retry`);
+      await mutate(); // Refresh data
+    } catch (error) {
+      console.error("Failed to retry task:", error);
+      alert("Failed to retry task. Please try again.");
+    } finally {
+      setTimeout(() => setRetryingTaskId(null), 500);
+    }
   };
 
   if (error) {
@@ -141,55 +156,91 @@ export default function WorkflowDetail() {
             {/* Loop Render Tasks */}
             {tasks.map((task: Task, index: number) => (
               <div key={task.ID} className="flex items-center">
-                {/* Modern Task Card */}
+                {/* Compact Task Card */}
                 <div className="relative group">
                   <div
                     className={`
-                    relative w-56 rounded-2xl border-2 overflow-hidden transition-all duration-300
+                    relative w-44 rounded-lg border-2 overflow-hidden transition-all duration-300
                     hover:scale-105 hover:-translate-y-1 cursor-pointer
                     ${getStatusStyle(task.Status)}
                   `}>
                     {/* Colored Header Bar */}
-                    <div className={`h-2 ${getHeaderColor(task.Status)}`}></div>
+                    <div className={`h-1.5 ${getHeaderColor(task.Status)}`}></div>
 
                     {/* Card Content */}
-                    <div className="p-5">
-                      {/* Top Row: Icon & Badge */}
-                      <div className="flex justify-between items-start mb-4">
-                        <div className={`p-2.5 rounded-xl ${getIconBg(task.Status)} transition-transform duration-300 group-hover:rotate-12`}>
-                          {getIcon(task.Status)}
-                        </div>
-
-                        {task.RetryCount && task.RetryCount > 0 && (
-                          <span className="flex items-center gap-1 text-xs bg-red-500 text-white px-2.5 py-1 rounded-full font-bold shadow-md">
-                            <span className="animate-spin">↻</span> {task.RetryCount}
-                          </span>
-                        )}
+                    <div className="p-3">
+                      {/* Task Name with Icon */}
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className={`p-1.5 rounded-lg ${getIconBg(task.Status)}`}>{getIcon(task.Status, 20)}</div>
+                        <h3 className="font-semibold text-sm text-gray-800 dark:text-white leading-tight flex-1 truncate">{task.TaskName}</h3>
                       </div>
 
-                      {/* Task Name */}
-                      <h3 className="font-bold text-lg mb-2 text-gray-800 dark:text-white leading-tight">{task.TaskName}</h3>
-
-                      {/* Status Badge */}
-                      <div className="flex items-center gap-2">
-                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${getStatusBadge(task.Status)}`}>
+                      {/* Status Badge with Retry Count */}
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusBadge(task.Status)}`}>
                           <span
-                            className={`w-1.5 h-1.5 rounded-full mr-1.5 ${task.Status === "IN_PROGRESS" ? "animate-pulse" : ""} ${getStatusDot(
+                            className={`w-1 h-1 rounded-full mr-1 ${task.Status === "RUNNING" ? "animate-pulse" : ""} ${getStatusDot(
                               task.Status
                             )}`}></span>
                           {task.Status}
                         </span>
+
+                        {task.RetryCount !== undefined && task.RetryCount > 0 && (
+                          <span className="flex items-center gap-0.5 text-xs bg-orange-500 dark:bg-orange-600 text-white px-1.5 py-0.5 rounded font-bold shadow-sm">
+                            <span className="animate-spin">↻</span> {task.RetryCount}/{task.MaxRetries || 3}
+                          </span>
+                        )}
                       </div>
+
+                      {/* Retry Progress Bar */}
+                      {task.RetryCount !== undefined && task.RetryCount > 0 && (
+                        <div className="mt-2">
+                          <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+                            <span>Retry Attempts</span>
+                            <span className="font-mono">
+                              {task.RetryCount}/{task.MaxRetries || 3}
+                            </span>
+                          </div>
+                          <div className="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-1">
+                            <div
+                              className="bg-orange-500 dark:bg-orange-600 h-1 rounded-full transition-all duration-300"
+                              style={{ width: `${((task.RetryCount || 0) / (task.MaxRetries || 3)) * 100}%` }}></div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Manual Retry Button - Show when retry count reached max and status is FAILED */}
+                      {task.Status === "1FAILED" && task.RetryCount !== undefined && task.RetryCount >= (task.MaxRetries || 3) && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRetryTask(task.ID);
+                          }}
+                          disabled={retryingTaskId === task.ID}
+                          className="mt-2 w-full px-2 py-1 bg-blue-600 dark:bg-blue-700 text-white rounded text-xs font-medium hover:bg-blue-700 dark:hover:bg-blue-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1">
+                          {retryingTaskId === task.ID ? (
+                            <>
+                              <RefreshCw className="w-3 h-3 animate-spin" />
+                              Retrying...
+                            </>
+                          ) : (
+                            <>
+                              <RefreshCw className="w-3 h-3" />
+                              Manual Retry
+                            </>
+                          )}
+                        </button>
+                      )}
 
                       {/* Timestamp */}
                       {task.UpdatedAt && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">{new Date(task.UpdatedAt).toLocaleTimeString()}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">{new Date(task.UpdatedAt).toLocaleTimeString()}</p>
                       )}
                     </div>
 
                     {/* Progress Bar for In progress */}
                     {task.Status === "IN_PROGRESS" && (
-                      <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-200 dark:bg-slate-700">
+                      <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-200 dark:bg-slate-700">
                         <div className="h-full bg-linear-to-r from-yellow-400 to-orange-400 animate-[progress_2s_ease-in-out_infinite]"></div>
                       </div>
                     )}
@@ -221,16 +272,6 @@ export default function WorkflowDetail() {
               </div>
             ))}
           </div>
-        </div>
-
-        {/* Console Log จำลอง */}
-        <div className="mt-8 bg-gray-900 dark:bg-black rounded-lg p-4 font-mono text-sm h-40 overflow-y-auto opacity-90 transition-colors">
-          <p className="text-green-400">✓ System initialized...</p>
-          {tasks.map((t: Task) => (
-            <p key={t.ID} className="text-gray-300">
-              [{t.UpdatedAt}] Task <span className="text-yellow-300">{t.TaskName}</span> is {t.Status}
-            </p>
-          ))}
         </div>
 
         {/* Activity Logs Section */}
@@ -270,7 +311,11 @@ export default function WorkflowDetail() {
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{log.TaskName || "-"}</td>
-                        <td className="px-6 py-4 text-sm text-gray-700 dark:text-gray-300">{log.Details}</td>
+                        <td className="px-6 py-4 text-sm text-gray-700 dark:text-gray-300">
+                          <pre className="font-mono text-xs bg-gray-100 dark:bg-slate-900 p-2 rounded overflow-x-auto max-w-md">
+                            {JSON.stringify(JSON.parse(log.Details || "{}"), null, 2)}
+                          </pre>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -365,16 +410,16 @@ function getStatusDot(status: string) {
 }
 
 // Helper: เลือกไอคอน
-function getIcon(status: string) {
+function getIcon(status: string, size: number = 28) {
   switch (status) {
     case "COMPLETED":
-      return <CheckCircle size={28} className="text-green-500 dark:text-green-400" />;
+      return <CheckCircle size={size} className="text-green-500 dark:text-green-400" />;
     case "IN_PROGRESS":
-      return <Clock size={28} className="animate-spin text-yellow-500 dark:text-yellow-400" />;
+      return <Clock size={size} className="animate-spin text-yellow-500 dark:text-yellow-400" />;
     case "FAILED":
-      return <AlertTriangle size={28} className="text-red-500 dark:text-red-400" />;
+      return <AlertTriangle size={size} className="text-red-500 dark:text-red-400" />;
     default:
-      return <Circle size={28} className="text-slate-400 dark:text-slate-500" />;
+      return <Circle size={size} className="text-slate-400 dark:text-slate-500" />;
   }
 }
 
