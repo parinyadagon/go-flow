@@ -7,7 +7,8 @@ A production-ready sequential workflow engine with Go backend (Hexagonal Archite
 - ✅ **Sequential Task Execution** - Execute tasks in a defined sequential order
 - ✅ **Background Worker** - Asynchronous task processing with configurable worker pool
 - ✅ **Automatic Retry Logic** - Exponential backoff retry mechanism for failed tasks
-- ✅ **Workflow Definition** - Easy workflow definition using maps
+- ✅ **Workflow Registry Pattern** - Dynamic workflow registration with inline task functions
+- ✅ **Self-Contained Workflows** - Each workflow in separate package with own tasks
 - ✅ **Type-Safe Database** - Type-safe SQL queries with Jet ORM v2
 - ✅ **Clean Architecture** - Hexagonal Architecture (Ports & Adapters)
 - ✅ **RESTful API** - HTTP API powered by Echo v4 Framework
@@ -18,6 +19,7 @@ A production-ready sequential workflow engine with Go backend (Hexagonal Archite
 - ✅ **Modern Frontend** - Next.js 16 with TypeScript, Tailwind CSS v4, and SWR
 - ✅ **Real-time Updates** - Auto-refresh workflow status with polling
 - ✅ **Dark Mode** - Full dark mode support with theme persistence
+- ✅ **Workflow Discovery** - API endpoint to list available workflows
 
 ## 🏗️ Architecture
 
@@ -29,8 +31,12 @@ internal/
 ├── core/
 │   ├── domain/        # Domain Models
 │   ├── port/          # Interface Definitions (Ports)
+│   ├── registry/      # Workflow Registry (manages workflow definitions)
 │   ├── service/       # Business Logic
 │   └── worker/        # Background Worker
+└── workflows/         # Self-Contained Workflow Packages
+    ├── order/         # Order workflow with tasks
+    └── refund/        # Refund workflow with tasks
 ```
 
 **Hexagonal Architecture Components:**
@@ -199,7 +205,22 @@ npm run build && npm start  # or yarn build && yarn start
 
 ## 📖 Usage
 
-### Create Workflow
+### List Available Workflows
+
+Get all registered workflows:
+
+```bash
+curl http://localhost:8080/workflows/available
+```
+
+**Response:**
+```json
+{
+  "workflows": ["OrderProcess", "RefundProcess"]
+}
+```
+
+### Create Workflow Instance
 
 Start a new workflow via API:
 
@@ -230,15 +251,258 @@ curl -X POST http://localhost:8080/workflows \
 }
 ```
 
-### Define Custom Workflow
+## 📝 Define Custom Workflows
 
-Edit in `internal/core/service/workflow_service.go`:
+### Self-Contained Workflow Pattern
+
+Go-Flow uses a **Self-Contained Workflow Pattern** where each workflow is in its own package with all related tasks. This provides:
+- ✅ Clear separation of concerns
+- ✅ No naming conflicts between workflows
+- ✅ Easy to test and maintain
+- ✅ Team can work on different workflows independently
+
+### Step 1: Create Workflow Package
+
+Create a new directory under `internal/workflows/`:
+
+```bash
+mkdir -p internal/workflows/user
+```
+
+### Step 2: Define Workflow Registration
+
+Create `internal/workflows/user/workflow.go`:
 
 ```go
-var WorkflowDefinitions = map[string][]string{
-    "OrderProcess": {"ValidateOrder", "DeductMoney", "SendEmail"},
-    "UserOnboarding": {"CreateAccount", "SendWelcomeEmail", "AssignRole"},
+package user
+
+import (
+	"github.com/parinyadagon/go-workflow/internal/core/registry"
+)
+
+// Register registers the UserOnboarding workflow
+func Register(reg *registry.WorkflowRegistry) {
+	reg.NewWorkflow("UserOnboarding").
+		AddTask("CreateAccount", createAccount).
+		AddTask("SendWelcomeEmail", sendWelcomeEmail).
+		AddTask("AssignRole", assignRole).
+		MustBuild()
 }
+```
+
+### Step 3: Implement Task Functions
+
+Create `internal/workflows/user/tasks.go`:
+
+```go
+package user
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"time"
+
+	"github.com/parinyadagon/go-workflow/gen/go_flow/model"
+	"github.com/parinyadagon/go-workflow/pkg/logger"
+)
+
+func createAccount(ctx context.Context, task *model.Tasks) error {
+	logger.Info().Str("task", "CreateAccount").Msg("Creating user account")
+
+	// Parse input payload
+	var input map[string]interface{}
+	if task.InputPayload != nil {
+		if err := json.Unmarshal([]byte(*task.InputPayload), &input); err != nil {
+			return err
+		}
+	}
+
+	// Business logic here
+	email, ok := input["email"].(string)
+	if !ok || email == "" {
+		return errors.New("email is required")
+	}
+
+	// Simulate work
+	time.Sleep(1 * time.Second)
+
+	// Set output payload for next task
+	output := map[string]interface{}{
+		"user_id":    "USR-" + time.Now().Format("20060102150405"),
+		"email":      email,
+		"created_at": time.Now().Format(time.RFC3339),
+	}
+	outputJSON, _ := json.Marshal(output)
+	outputStr := string(outputJSON)
+	task.OutputPayload = &outputStr
+
+	return nil
+}
+
+func sendWelcomeEmail(ctx context.Context, task *model.Tasks) error {
+	logger.Info().Str("task", "SendWelcomeEmail").Msg("Sending welcome email")
+
+	// Parse input from previous task
+	var input map[string]interface{}
+	if task.InputPayload != nil {
+		json.Unmarshal([]byte(*task.InputPayload), &input)
+	}
+
+	// Get data from previous task
+	userID := input["user_id"].(string)
+	email := input["email"].(string)
+
+	// Send email logic here
+	time.Sleep(500 * time.Millisecond)
+
+	// Pass data to next task
+	output := map[string]interface{}{
+		"user_id":     userID,
+		"email":       email,
+		"email_sent":  true,
+		"sent_at":     time.Now().Format(time.RFC3339),
+	}
+	outputJSON, _ := json.Marshal(output)
+	outputStr := string(outputJSON)
+	task.OutputPayload = &outputStr
+
+	return nil
+}
+
+func assignRole(ctx context.Context, task *model.Tasks) error {
+	logger.Info().Str("task", "AssignRole").Msg("Assigning default role")
+
+	var input map[string]interface{}
+	if task.InputPayload != nil {
+		json.Unmarshal([]byte(*task.InputPayload), &input)
+	}
+
+	userID := input["user_id"].(string)
+
+	// Assign role logic here
+	time.Sleep(300 * time.Millisecond)
+
+	output := map[string]interface{}{
+		"user_id":     userID,
+		"role":        "member",
+		"assigned_at": time.Now().Format(time.RFC3339),
+	}
+	outputJSON, _ := json.Marshal(output)
+	outputStr := string(outputJSON)
+	task.OutputPayload = &outputStr
+
+	return nil
+}
+```
+
+### Step 4: Register Workflow in Main
+
+Edit `cmd/main.go` and add your workflow:
+
+```go
+import (
+	// ... other imports
+	"github.com/parinyadagon/go-workflow/internal/workflows/order"
+	"github.com/parinyadagon/go-workflow/internal/workflows/refund"
+	"github.com/parinyadagon/go-workflow/internal/workflows/user"  // Add this
+)
+
+func main() {
+	// ... setup code
+
+	// Create registry and register workflows
+	workflowRegistry := registry.NewWorkflowRegistry()
+	
+	order.Register(workflowRegistry)
+	refund.Register(workflowRegistry)
+	user.Register(workflowRegistry)  // Add this line
+
+	// ... rest of the code
+}
+```
+
+### Step 5: Test Your Workflow
+
+```bash
+curl -X POST http://localhost:8080/workflows \
+  -H "Content-Type: application/json" \
+  -d '{
+    "workflow_name": "UserOnboarding",
+    "input_payload": {
+      "email": "user@example.com",
+      "username": "newuser"
+    }
+  }'
+```
+
+## 🔗 Task Data Flow
+
+Tasks communicate by passing data through `InputPayload` and `OutputPayload`:
+
+```
+Task 1: CreateAccount
+  ├─ Input:  {"email": "user@example.com"}
+  └─ Output: {"user_id": "USR-001", "email": "user@example.com"}
+          ↓ (Worker passes Output as Input to next task)
+Task 2: SendWelcomeEmail
+  ├─ Input:  {"user_id": "USR-001", "email": "user@example.com"}
+  └─ Output: {"user_id": "USR-001", "email_sent": true}
+          ↓
+Task 3: AssignRole
+  ├─ Input:  {"user_id": "USR-001", "email_sent": true}
+  └─ Output: {"user_id": "USR-001", "role": "member"}
+```
+
+**Key Points:**
+- Each task reads from `task.InputPayload` (JSON string)
+- Each task writes to `task.OutputPayload` (JSON string)
+- Worker automatically passes `OutputPayload` of current task as `InputPayload` of next task
+- Data persists throughout the workflow chain
+
+## 🎨 Workflow Organization Patterns
+
+### Option 1: Simple Tasks (Recommended for small workflows)
+
+All tasks in one file:
+
+```
+internal/workflows/
+└── simple/
+    ├── workflow.go  # Register workflow
+    └── tasks.go     # All task functions
+```
+
+### Option 2: Separate Task Files (Recommended for medium workflows)
+
+Each task in its own file:
+
+```
+internal/workflows/
+└── order/
+    ├── workflow.go      # Register workflow
+    ├── validate.go      # ValidateOrder task
+    ├── payment.go       # DeductMoney task
+    └── notification.go  # SendEmail task
+```
+
+### Option 3: Feature-Based (Recommended for complex workflows)
+
+Group related tasks:
+
+```
+internal/workflows/
+└── ecommerce/
+    ├── workflow.go       # Register workflow
+    ├── validation/       # Validation tasks
+    │   ├── order.go
+    │   └── inventory.go
+    ├── payment/          # Payment tasks
+    │   ├── authorize.go
+    │   └── capture.go
+    └── fulfillment/      # Fulfillment tasks
+        ├── ship.go
+        └── notify.go
 ```
 
 ## 🔄 Workflow Execution Flow
@@ -348,14 +612,25 @@ go-flow/
 │   │   │   └── workflow_repo.go  # MySQL Repository
 │   │   └── driving/
 │   │       └── http_handler.go   # HTTP Handler (Echo)
-│   └── core/
-│       ├── domain/                # Domain models
-│       ├── port/
-│       │   └── workflow.go       # Interfaces (Ports)
-│       ├── service/
-│       │   └── workflow_service.go # Business logic
-│       └── worker/
-│           └── workflow_worker.go  # Background worker (retry logic)
+│   ├── core/
+│   │   ├── domain/                # Domain models
+│   │   ├── port/
+│   │   │   └── workflow.go       # Interfaces (Ports)
+│   │   ├── registry/
+│   │   │   └── workflow_builder.go # Workflow Registry
+│   │   ├── service/
+│   │   │   └── workflow_service.go # Business logic
+│   │   └── worker/
+│   │       └── workflow_worker.go  # Background worker (retry logic)
+│   └── workflows/                 # Self-Contained Workflows
+│       ├── order/                 # Order workflow
+│       │   ├── workflow.go       # Register workflow
+│       │   ├── validate.go       # ValidateOrder task
+│       │   ├── payment.go        # DeductMoney task
+│       │   └── notification.go   # SendEmail task
+│       └── refund/                # Refund workflow
+│           ├── workflow.go       # Register workflow
+│           └── tasks.go          # All refund tasks
 ├── frontend/                      # Next.js Frontend
 │   ├── app/
 │   │   ├── components/            # React components
@@ -449,7 +724,8 @@ All settings via environment variables:
 ## 🔌 API Endpoints
 
 | Method | Endpoint | Description | Query Params |
-|--------|----------|-------------|--------------|
+|--------|----------|-------------|--------------||
+| GET | `/workflows/available` | List all registered workflows | - |
 | POST | `/workflows` | Create a new Workflow | - |
 | GET | `/workflows` | List all workflows with pagination | `limit`, `offset` |
 | GET | `/workflows/:id` | Get workflow details with tasks and logs | - |
