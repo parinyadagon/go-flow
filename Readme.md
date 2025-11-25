@@ -794,14 +794,10 @@ Contributions, issues, and feature requests are welcome!
 
 - [ ] Unit tests for worker, service, and handlers
 - [ ] Integration tests with test database
-- [ ] Metrics and monitoring (Prometheus)
-- [ ] Distributed tracing (OpenTelemetry)
+- [ ] Database indexes for performance optimization
 - [ ] Workflow scheduling (cron support)
-- [ ] Task dependencies (parallel execution)
-- [ ] Workflow versioning
-- [ ] Admin dashboard for workflow management
-- [ ] Webhook notifications
-- [ ] GraphQL API
+- [ ] Parallel task execution
+- [ ] Metrics and monitoring (Prometheus)
 
 ## 📝 License
 
