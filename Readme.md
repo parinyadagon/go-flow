@@ -4,22 +4,14 @@ A production-ready sequential workflow engine with Go backend (Hexagonal Archite
 
 ## ✨ Features
 
-- ✅ **Sequential Task Execution** - Execute tasks in a defined sequential order
-- ✅ **Background Worker** - Asynchronous task processing with configurable worker pool
-- ✅ **Automatic Retry Logic** - Exponential backoff retry mechanism for failed tasks
-- ✅ **Workflow Registry Pattern** - Dynamic workflow registration with inline task functions
-- ✅ **Self-Contained Workflows** - Each workflow in separate package with own tasks
-- ✅ **Type-Safe Database** - Type-safe SQL queries with Jet ORM v2
-- ✅ **Clean Architecture** - Hexagonal Architecture (Ports & Adapters)
-- ✅ **RESTful API** - HTTP API powered by Echo v4 Framework
-- ✅ **Structured Logging** - Production-ready logging with zerolog
-- ✅ **Input Validation** - Request validation with go-playground/validator
-- ✅ **Health Checks** - Health and readiness endpoints for monitoring
-- ✅ **Pagination Support** - API pagination with total count metadata
-- ✅ **Modern Frontend** - Next.js 16 with TypeScript, Tailwind CSS v4, and SWR
-- ✅ **Real-time Updates** - Auto-refresh workflow status with polling
-- ✅ **Dark Mode** - Full dark mode support with theme persistence
-- ✅ **Workflow Discovery** - API endpoint to list available workflows
+- 🔄 **Sequential Task Execution** - Tasks execute in strict order with automatic orchestration
+- ⚡ **Background Worker** - Concurrent task processing with configurable polling intervals
+- 🔁 **Automatic Retry Logic** - Failed tasks retry with exponential backoff (2^n seconds)
+- 📦 **Self-Contained Workflows** - Each workflow in its own package with clear organization
+- 🏛️ **Clean Architecture** - Hexagonal Architecture (Ports & Adapters) for maintainability
+- 🎯 **Type-Safe Database** - Jet ORM v2 generates type-safe queries from schema
+- 📊 **Real-time Monitoring** - SWR auto-refresh every 1 second for live updates
+- 🌙 **Dark Mode** - Persistent theme with smooth transitions
 
 ## 🏗️ Architecture
 
