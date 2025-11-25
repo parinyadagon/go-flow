@@ -160,12 +160,7 @@ func main() {
 	svc := service.NewWorkflowService(repo, workflowRegistry)
 	hdl := handler.NewWorkflowHandler(svc)
 
-	workerNode := worker.NewWorkerBuilder(repo, workflowRegistry).
-		WithPollInterval(cfg.Worker.PollInterval).
-		WithBatchSize(cfg.Worker.BatchSize).
-		WithTaskTimeout(cfg.Worker.TaskTimeout).
-		WithMaxRetries(cfg.Worker.MaxRetries).
-		Build()
+	workerNode := worker.NewWorkflowWorker(repo, workflowRegistry, &cfg.Worker)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

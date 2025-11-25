@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/parinyadagon/go-workflow/config"
 	"github.com/parinyadagon/go-workflow/gen/go_flow/model"
 	"github.com/parinyadagon/go-workflow/internal/core/port"
 	"github.com/parinyadagon/go-workflow/internal/core/registry"
@@ -20,6 +21,17 @@ type WorkflowWorker struct {
 	batchSize    int
 	taskTimeout  time.Duration
 	maxRetries   int
+}
+
+func NewWorkflowWorker(repo port.WorkflowRepository, reg *registry.WorkflowRegistry, cfg *config.WorkerConfig) *WorkflowWorker {
+	return &WorkflowWorker{
+		repo:         repo,
+		registry:     reg,
+		pollInterval: cfg.PollInterval,
+		batchSize:    cfg.BatchSize,
+		taskTimeout:  cfg.TaskTimeout,
+		maxRetries:   cfg.MaxRetries,
+	}
 }
 
 func (w *WorkflowWorker) Start(ctx context.Context) {
@@ -338,70 +350,4 @@ func (w *WorkflowWorker) handleTaskSuccess(ctx context.Context, task model.Tasks
 
 	// Orchestrate next step
 	w.orchestrateNextStep(ctx, task)
-}
-
-// =================================
-// Builder Pattern
-// =================================
-
-// WorkerBuilder providers a fluent API for constructing WorkflowWorker
-type WorkBuilder struct {
-	repo         port.WorkflowRepository
-	registry     *registry.WorkflowRegistry
-	pollInterval time.Duration
-	batchSize    int
-	taskTimeout  time.Duration
-	maxRetries   int
-}
-
-// NewWorkerBuilder creates a new WorkerBuilder with default values
-func NewWorkerBuilder(repo port.WorkflowRepository, reg *registry.WorkflowRegistry) *WorkBuilder {
-	return &WorkBuilder{
-		repo:         repo,
-		registry:     reg,
-		pollInterval: 5 * time.Second,
-		batchSize:    10,
-		taskTimeout:  30 * time.Second,
-		maxRetries:   3,
-	}
-}
-
-// WithPollInterval sets the polling interval
-func (b *WorkBuilder) WithPollInterval(d time.Duration) *WorkBuilder {
-	b.pollInterval = d
-
-	return b
-}
-
-// WithBatchSize sets the batch size for task processing
-func (b *WorkBuilder) WithBatchSize(size int) *WorkBuilder {
-	b.batchSize = size
-
-	return b
-}
-
-// WithTaskTimeout sets the timeout for task execution
-func (b *WorkBuilder) WithTaskTimeout(d time.Duration) *WorkBuilder {
-	b.taskTimeout = d
-
-	return b
-}
-
-// WithMaxRetries size the maximum retry attempts
-func (b *WorkBuilder) WithMaxRetries(n int) *WorkBuilder {
-	b.maxRetries = n
-
-	return b
-}
-
-// Build creates the workflowWorker instance
-func (b *WorkBuilder) Build() *WorkflowWorker {
-	return &WorkflowWorker{
-		repo:         b.repo,
-		registry:     b.registry,
-		pollInterval: b.pollInterval,
-		batchSize:    b.batchSize,
-		taskTimeout:  b.taskTimeout,
-		maxRetries:   b.maxRetries,
-	}
 }
