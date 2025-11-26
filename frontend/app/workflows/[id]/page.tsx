@@ -42,7 +42,7 @@ export default function WorkflowDetail() {
   const params = useParams();
   const workflowId = params.id as string;
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [retryingTaskId, setRetryingTaskId] = useState<number | null>(null);
+  // Removed retryingTaskId state
 
   // 🔥 Magic: refreshInterval จะยิง API ทุก 1 วินาทีเพื่ออัปเดตสถานะ Real-time!
   const { data, error, mutate } = useSWR<WorkflowData>(workflowId ? `http://localhost:8080/workflows/${workflowId}` : null, fetcher, {
@@ -55,18 +55,7 @@ export default function WorkflowDetail() {
     setTimeout(() => setIsRefreshing(false), 500);
   };
 
-  const handleRetryTask = async (taskId: number) => {
-    try {
-      setRetryingTaskId(taskId);
-      await axios.post(`http://localhost:8080/tasks/${taskId}/retry`);
-      await mutate(); // Refresh data
-    } catch (error) {
-      console.error("Failed to retry task:", error);
-      alert("Failed to retry task. Please try again.");
-    } finally {
-      setTimeout(() => setRetryingTaskId(null), 500);
-    }
-  };
+  // Removed handleRetryTask function
 
   if (error) {
     return (
@@ -191,46 +180,6 @@ export default function WorkflowDetail() {
                           </span>
                         )}
                       </div>
-
-                      {/* Retry Progress Bar */}
-                      {task.RetryCount !== undefined && task.RetryCount > 0 && (
-                        <div className="mt-2">
-                          <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
-                            <span>Retry Attempts</span>
-                            <span className="font-mono">
-                              {task.RetryCount}/{task.MaxRetries || 3}
-                            </span>
-                          </div>
-                          <div className="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-1">
-                            <div
-                              className="bg-orange-500 dark:bg-orange-600 h-1 rounded-full transition-all duration-300"
-                              style={{ width: `${((task.RetryCount || 0) / (task.MaxRetries || 3)) * 100}%` }}></div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Manual Retry Button - Show when retry count reached max and status is FAILED */}
-                      {task.Status === "1FAILED" && task.RetryCount !== undefined && task.RetryCount >= (task.MaxRetries || 3) && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRetryTask(task.ID);
-                          }}
-                          disabled={retryingTaskId === task.ID}
-                          className="mt-2 w-full px-2 py-1 bg-blue-600 dark:bg-blue-700 text-white rounded text-xs font-medium hover:bg-blue-700 dark:hover:bg-blue-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1">
-                          {retryingTaskId === task.ID ? (
-                            <>
-                              <RefreshCw className="w-3 h-3 animate-spin" />
-                              Retrying...
-                            </>
-                          ) : (
-                            <>
-                              <RefreshCw className="w-3 h-3" />
-                              Manual Retry
-                            </>
-                          )}
-                        </button>
-                      )}
 
                       {/* Timestamp */}
                       {task.UpdatedAt && (
